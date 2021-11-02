@@ -27,11 +27,13 @@ setup(
     author="csaba.nemes",
     author_email="waszil.waszil@gmail.com",
     packages=find_packages(exclude=["test"]),
-    tests_require=[
-        "pytest",
-        "construct"
-    ],
     install_requires=[],
+    extras_require=dict(
+        dev=[
+            "pytest",
+            "construct",
+        ]
+    ),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
