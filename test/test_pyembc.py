@@ -4,7 +4,7 @@ from ctypes import c_ubyte, c_uint16, c_uint8, c_uint32, c_float, c_int8
 import construct
 import pytest
 
-from pyembc.pyembc import pyembc_struct, pyembc_union
+from pyembc import pyembc_struct, pyembc_union
 
 
 def test_compare_construct_benchmark():
