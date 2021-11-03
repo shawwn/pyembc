@@ -1,8 +1,16 @@
+import pdb
 import sys
+import os
 import ctypes
 import struct
 from enum import Enum, auto
 from typing import Type, Any, Iterable, Dict, Optional, Mapping
+import tempfile
+import atexit
+import shutil
+
+tempfolder = tempfile.mkdtemp()
+atexit.register(shutil.rmtree, tempfolder)
 
 __all__ = [
     "pyembc_struct",
@@ -23,6 +31,88 @@ _CTYPES_PACK_ATTR = "_pack_"
 # name of the field in ctypes Structure instances that are non-native-byteorder
 _CTYPES_SWAPPED_ATTR = "_swappedbytes_"
 
+def ero(*args):
+    print(*args, file=sys.stderr)
+
+
+def brk():
+    mypdb = pdb.Pdb(stdout=sys.__stderr__)
+    mypdb.reset()
+    mypdb.set_trace()
+
+def pm():
+    mypdb = pdb.Pdb(stdout=sys.__stderr__)
+    mypdb.reset()
+    mypdb.interaction(None, sys.last_traceback)
+
+def c_is_array_type(ctype):
+    return issubclass(ctype, ctypes.Array)
+
+def c_is_union_type(ctype):
+    return issubclass(ctype, ctypes.Union)
+
+def c_is_struct_type(ctype):
+    return issubclass(ctype, ctypes.Structure)
+
+def c_elem_type(ctype):
+    if issubclass(ctype, ctypes.Structure):
+        return ''.join([c_elem_type(t) for name, t in ctype._fields_])
+    if issubclass(ctype, ctypes.Union):
+        return max([c_elem_type(t) for name, t in ctype._fields_], key=len)
+    if issubclass(ctype, ctypes.Array):
+        return ctype._length_ * c_elem_type(ctype._type_)
+    if issubclass(ctype, ctypes._SimpleCData):
+        result = ctype._type_
+        if not isinstance(result, str):
+            brk()
+            raise ValueError("Not a str")
+        return result
+    if issubclass(ctype, ctypes._Pointer):
+        # raise ValueError("Can't infer the elem_type of a pointer")
+        return "P"
+    raise NotImplementedError("Unexpected ctype")
+
+def c_elem_size(ctype):
+    # byte_size = struct.calcsize(elem_type.replace('z', 'Z').replace('Z', 'P'))
+    return ctypes.sizeof(ctype)
+
+def c_short_type_name(ctype):
+    if issubclass(ctype, ctypes.Array):
+        return f'({c_short_type_name(ctype._type_)})[{ctype._length_}]'
+    if issubclass(ctype, ctypes.Structure):
+        return '{' + ','.join([c_short_type_name(t) for name, t in ctype._fields_]) + '}'
+    if issubclass(ctype, ctypes.Union):
+        return '{' + '|'.join([c_short_type_name(t) for name, t in ctype._fields_]) + '}'
+    elem_type = c_elem_type(ctype)
+    # noinspection PyUnresolvedReferences
+    # byte_size = struct.calcsize(elem_type.replace('z', 'Z').replace('Z', 'P'))
+    byte_size = c_elem_size(ctype)
+    bit_size = byte_size * 8
+    # noinspection PyUnresolvedReferences
+    signedness = 'u' if elem_type.isupper() else 's'
+    if issubclass(ctype, (ctypes.c_float, ctypes.c_double)):
+        prefix = 'f'
+    else:
+        prefix = signedness
+    return f"{prefix}{bit_size}"
+
+def c_repr(cdata):
+    if isinstance(cdata, (bytes, str, int, bool, float, type(None))):
+        return repr(cdata)
+    ctype = type(cdata)
+    if isinstance(cdata, ctypes.Array):
+        return '[' + ','.join([c_repr(x) for x in cdata]) + ']'
+    if isinstance(cdata, ctypes.Structure):
+        return '{' + ','.join([c_repr(getattr(cdata, name)) for name, t in ctype._fields_]) + '}'
+    if isinstance(cdata, ctypes.Union):
+        return '{' + '|'.join([c_repr(getattr(cdata, name)) for name, t in ctype._fields_]) + '}'
+    if issubclass(ctype, (ctypes.c_float, ctypes.c_double)):
+        return f"{cdata:.6f}"
+    if isinstance(cdata, ctypes._Pointer) and False:
+        value = ctypes.cast(cdata, ctypes.c_void_p).value
+        return f'0x{value:X}'
+    else:
+        return repr(cdata)
 
 class PyembcFieldType:
 
@@ -31,7 +121,21 @@ class PyembcFieldType:
     """
 
     # noinspection PyProtectedMember
-    def __init__(self, _type, bit_size: int, bit_offset: int):
+    def __init__(self, ctype, _cls, _type, bit_size: int, bit_offset: int):
+        if isinstance(_type, str):
+            g = sys.modules[_cls.__module__].__dict__
+            if _type not in g and _type.endswith('_p'):
+                # try resolving the non-pointer type
+                _type = _type[:-len('_p')]
+                if _type == _cls.__name__:
+                    _type = ctypes.POINTER(ctype)
+                else:
+                    _type = g[_type]
+            else:
+                _type = g[_type]
+        if not isinstance(_type, type):
+            brk()
+        self.base_cls = _cls
         self.base_type = _type
         self.bit_size = bit_size
         self.bit_offset = bit_offset
@@ -43,8 +147,10 @@ class PyembcFieldType:
     @property
     def is_ctypes_type(self) -> bool:
         # noinspection PyProtectedMember
+        if not isinstance(self.base_type, type):
+            raise TypeError("Base type isn't a type!")
         return issubclass(
-            self.base_type, (ctypes._SimpleCData, ctypes.Structure, ctypes.Union, ctypes.Array)
+            self.base_type, (ctypes._Pointer, ctypes._SimpleCData, ctypes.Structure, ctypes.Union, ctypes.Array)
         )
 
     @property
@@ -55,6 +161,20 @@ class PyembcFieldType:
     @property
     def is_structure(self):
         return issubclass(self.base_type, ctypes.Structure)
+
+    def elem_type(self):
+        return c_elem_type(self.base_type)
+
+    @property
+    def is_array(self):
+        return issubclass(self.base_type, ctypes.Array)
+
+    @property
+    def array_length(self):
+        if self.is_array:
+            return self.base_type._length_
+        else:
+            return 0
 
 
 class _PyembcTarget(Enum):
@@ -73,9 +193,11 @@ def _check_value_for_type(field_type: PyembcFieldType, value: Any):
     :param value: value to be written
     :raises: ValueError
     """
-    if field_type.is_ctypes_simple_type:
+    if field_type.is_array or field_type.is_ctypes_simple_type:
         # check for ctypes types, that have the _type_ attribute, containing a struct char.
         struct_char = getattr(field_type.base_type, _CTYPES_TYPE_ATTR)
+        if hasattr(struct_char, _CTYPES_TYPE_ATTR):
+            struct_char = field_type.base_type._length_ * getattr(struct_char, _CTYPES_TYPE_ATTR)
         is_signed = struct_char.islower()
         # noinspection PyProtectedMember
         if isinstance(value, ctypes._SimpleCData):
@@ -83,8 +205,15 @@ def _check_value_for_type(field_type: PyembcFieldType, value: Any):
         else:
             _value = value
         try:
-            struct.pack(struct_char, _value)
+            if field_type.is_array:
+                struct.pack(struct_char, *[x for x in _value])
+            elif field_type.base_type == ctypes.c_char_p:
+                # strings are ok
+                pass
+            else:
+                struct.pack(struct_char, _value)
         except struct.error as e:
+            brk()
             raise ValueError(
                 f'{value} cannot be set for {field_type.base_type.__name__} ({repr(e)})!'
             ) from None
@@ -98,6 +227,7 @@ def _check_value_for_type(field_type: PyembcFieldType, value: Any):
             if not min_raw <= _value <= max_raw:
                 raise ValueError(f"Cannot set {_value} for this bitfield")
     else:
+        brk()
         raise TypeError('Got non-ctypes type!')
 
 
@@ -133,16 +263,7 @@ def _short_type_name(typeobj: PyembcFieldType) -> str:
     :param typeobj: pyembc type object
     :return: short name for the type
     """
-    # noinspection PyUnresolvedReferences
-    byte_size = struct.calcsize(typeobj.base_type._type_)
-    bit_size = byte_size * 8
-    # noinspection PyUnresolvedReferences
-    signedness = 'u' if typeobj.base_type._type_.isupper() else 's'
-    if issubclass(typeobj.base_type, (ctypes.c_float, ctypes.c_double)):
-        prefix = 'f'
-    else:
-        prefix = signedness
-    return f"{prefix}{bit_size}"
+    return c_short_type_name(typeobj.base_type)
 
 
 # noinspection PyProtectedMember
@@ -154,7 +275,8 @@ def _c_type_name(typeobj: PyembcFieldType) -> str:
     :return: c type name for the type
     """
     # noinspection PyUnresolvedReferences
-    byte_size = struct.calcsize(typeobj.base_type._type_)
+    # byte_size = struct.calcsize(typeobj.base_type_char)
+    byte_size = c_elem_size(typeobj.base_type)
     if issubclass(typeobj.base_type, (ctypes.c_float, ctypes.c_double)):
         if byte_size == 4:
             return "float"
@@ -174,7 +296,8 @@ def _c_type_name(typeobj: PyembcFieldType) -> str:
         else:
             raise ValueError("invalid length")
         # noinspection PyUnresolvedReferences
-        signed = "unsigned" if typeobj.base_type._type_.isupper() else "signed"
+        elem_type = c_elem_type(typeobj.base_type)
+        signed = "signed" if elem_type.islower() else "unsigned"
         return f"{signed} {name}"
 
 
@@ -186,10 +309,11 @@ def __len_for_union(self):
 
 
 def _print_field_value(field, typeobj):
-    if issubclass(typeobj.base_type, (ctypes.c_float, ctypes.c_double)):
-        return f"{field:.6f}"
-    else:
-        return f"0x{field:X}"
+    return c_repr(field)
+    # if issubclass(typeobj.base_type, (ctypes.c_float, ctypes.c_double)):
+    #     return f"{field:.6f}"
+    # else:
+    #     return f"0x{field:X}"
 
 
 def __repr_for_union(self):
@@ -270,10 +394,23 @@ def _add_method(
         __locals.update(_locals)
     # final code
     args = ','.join(args)
-    code = f"def {name}({args}){return_annotation}:\n{body}"
+    sig = f"def {name}({args}){return_annotation}"
+    code = f"{sig}:\n{body}"
     # execute it and save to the class
-    exec(code, __globals, __locals)
+    # with tempfile.TemporaryDirectory() as tmpdirname:
+    if True:
+        safesig = ''.join([(c if c.isalnum() else '_') for c in sig])
+        filename = os.path.join(tempfolder, f'pyembc_dynamic_{safesig}.py')
+        with open(filename, 'w') as f:
+            f.write(code)
+        expr = compile(code, filename, 'exec')
+        try:
+            exec(expr, __globals, __locals)
+        except:
+            brk()
+            pm()
     method = __locals[name]
+    method.__qualname__ = f'{cls.__qualname__}.{cls.__name__}.{method.__name__}'
     method.__doc__ = docstring
     if class_method:
         method = classmethod(method)
@@ -354,7 +491,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=4):
         if field_cnt == len(cls_annotations) - 1:
             if _bitfield_counter > 0:
                 raise SyntaxError("Incomplete bitfield definition!")
-        field_type = PyembcFieldType(_type=__field_type, bit_size=bit_size, bit_offset=bit_offset)
+        field_type = PyembcFieldType(ctype=cls, _cls=_cls, _type=__field_type, bit_size=bit_size, bit_offset=bit_offset)
         # noinspection PyProtectedMember
         if not field_type.is_ctypes_type:
             raise TypeError(
@@ -570,16 +707,26 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=4):
         field = self.__getattribute__(field_name)
         field_type = self.{_FIELDS}[field_name]
         if _is_pyembc_type(field_type):
-            if not isinstance(value, field_type):
+            if not isinstance(field_type.base_type, type):
+                import pdb, sys; mypdb = pdb.Pdb(stdout=sys.__stderr__); mypdb.set_trace()
+            if not isinstance(value, field_type.base_type):
                 raise TypeError(
                     f'invalid value for field "{{field_name}}"! Must be of type {{field_type}}!'
                 )
             super(cls, self).__setattr__(field_name, value)
         else:
             _check_value_for_type(field_type, value)
-            if isinstance(value, ctypes._SimpleCData):
-                value = value.value
+            if isinstance(value, ctypes.Array):
+                value = tuple([x for x in value])
+            elif isinstance(value, ctypes._SimpleCData):
+                if isinstance(value, ctypes.c_char_p):
+                    #value = value.value.decode('utf-8')
+                    value = value.value
+                else:
+                    value = value.value
+            # import pdb, sys; mypdb = pdb.Pdb(stdout=sys.__stderr__); mypdb.set_trace()
             super(cls, self).__setattr__(field_name, value)
+            # print('ok', file=sys.stderr)
     """
     _add_method(
         cls=cls,
@@ -612,7 +759,7 @@ def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = 4):
         return wrap(_cls)
 
 
-def pyembc_union(_cls=None, *, endian=sys.byteorder):
+def pyembc_union(_cls=None, *, endian=sys.byteorder, pack=4):
     """
     Magic decorator to create a user-friendly union class
 
@@ -630,7 +777,7 @@ def pyembc_union(_cls=None, *, endian=sys.byteorder):
         )
 
     def wrap(cls):
-        return _generate_class(cls, _PyembcTarget.UNION, endian)
+        return _generate_class(cls, _PyembcTarget.UNION, endian, pack=pack)
 
     if _cls is None:
         # call with parens: @pyembc_struct(...)
