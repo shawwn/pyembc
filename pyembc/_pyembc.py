@@ -417,7 +417,7 @@ def _add_method(
     setattr(cls, name, method)
 
 
-def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=4):
+def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=8):
     """
     Generates a new class based on the decorated one that we gen in the _cls parameter.
     Adds methods, sets bases, etc.
@@ -740,7 +740,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=4):
     return cls
 
 
-def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = 4):
+def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = 8):
     """
     Magic decorator to create a user-friendly struct class
 
@@ -759,7 +759,7 @@ def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = 4):
         return wrap(_cls)
 
 
-def pyembc_union(_cls=None, *, endian=sys.byteorder, pack=4):
+def pyembc_union(_cls=None, *, endian=sys.byteorder, pack=8):
     """
     Magic decorator to create a user-friendly union class
 
