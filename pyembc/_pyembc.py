@@ -8,6 +8,7 @@ from typing import Type, Any, Iterable, Dict, Optional, Mapping
 import tempfile
 import atexit
 import shutil
+from get_annotations import get_annotations
 
 tempfolder = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, tempfolder)
@@ -429,7 +430,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
     :return: generated class
     """
     # get the original class' annotations, we will parse these and generate the fields from these.
-    cls_annotations = _cls.__dict__.get('__annotations__', {})
+    cls_annotations = get_annotations(_cls, eval_str=True)
 
     # ctypes currently does not implement the BigEndianUnion and LittleEndianUnion despite its documentation
     # sais so. Therefore, we use simple Union for now. Details:

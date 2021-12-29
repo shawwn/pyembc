@@ -27,7 +27,7 @@ setup(
     author="csaba.nemes",
     author_email="waszil.waszil@gmail.com",
     packages=find_packages(exclude=["test"]),
-    install_requires=[],
+    install_requires=["get-annotations>=0.1.2"],
     extras_require=dict(
         dev=[
             "pytest",
