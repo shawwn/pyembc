@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "emb"
+version = "0.0.1"
+homepage = "https://github.com/shawwn/emb"
+description = "Declarative library for for describing embedded C data types in python"
+authors = ["csaba.nemes <waszil.waszil@gmail.com>", "Shawn Presser <shawnpresser@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "emb"}]
+
+[tool.poetry.dependencies]
+python = "^3.6"
+get-annotations = "^0.1.2"
+
+[build-system]
+requires = ["setuptools", "poetry-core"]
+build-backend = "poetry.core.masonry.api"

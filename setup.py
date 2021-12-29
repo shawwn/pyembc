@@ -1,43 +1,30 @@
-import os
-import sys
+# -*- coding: utf-8 -*-
+from setuptools import setup
 
-from setuptools import setup, find_packages
+packages = \
+['emb']
 
-assert sys.version_info >= (3, 7, 0), "pyembc requires Python 3.7+"
+package_data = \
+{'': ['*']}
 
-with open("README.md", 'r') as f:
-    long_description = f.read()
+install_requires = \
+['get-annotations>=0.1.2,<0.2.0']
+
+setup_kwargs = {
+    'name': 'emb',
+    'version': '0.0.1',
+    'description': 'Declarative library for for describing embedded C data types in python',
+    'long_description': '# emb\n\nDeclarative library for for describing embedded C data types in python\n\n## Motivation\n\n`emb` is a wrapper above the `ctypes` library providing a more simple and declarative syntax,\nwhat I find more easy to use.\n\nThe motivation behind creating this library is to be able to write down a c structure/union very\nsimilarly as its written down in a c file, and then to be able to get the memory contents of\nsuch a data structure, that can be transferred to an embedded device with a direct memory\naccess method (like XCP) and in the other way as well, and also to be able to generate the actual\nc code that describes the same data structure, from the python description.\n\nI have used several similar libraries, such as [construct](https://construct.readthedocs.io/en/latest/),\n[structures](https://github.com/malinoff/structures), or even Protocol Buffers, however one was too slow,\nthe other could not generate code, the third is waaay too big, and actually what I needed was very\nvery limited, and that\'s exactly the scope of this library. Also, it was fun to write, and beware,\nI use `exec` under the hood as well! Yes, I know.\n\n## Examples\n\n### Declaring structures / unions\n\nstructures and unions can be declared in a similar way as with `dataclasses`:\n\n```python\nfrom emb import emb_struct, emb_union\nfrom ctypes import *\n\n@emb_struct\nclass Inner:\n    a: c_uint8\n    b: c_uint8\n\n@emb_struct\nclass Outer:\n    first: Inner\n    second: c_uint8\n    third: c_uint8\n    \n@emb_union\nclass MyUnion:\n    as_struct: Outer\n    as_int: c_uint32\n```\n\n### Instantiating\n\nThe instances of the above declared classes can be created as shown below.\n\n```python\n# empty constructor\ninner = Inner()\nprint(inner)\n>>> Inner(a:u8=0x0, b:u8=0x0)\n\n# constructor with default values\ninner = Inner(a=1, b=2)\nprint(inner)\n>>> Inner(a:u8=0x1, b:u8=0x2)\n\n# value checking\ninner = Inner(a=256, b=300)\n>>> ValueError: 256 cannot be set for c_ubyte (error(\'ubyte format requires 0 <= number <= 255\'))!\n\n# embedded structures\nouter = Outer()\n>>> Outer(first=Inner(a:u8=0x0, b:u8=0x0), second:u8=0x0, third:u8=0x0)\n\nouter = Outer(Inner(42, 43), 1, 2)\n>>> Outer(first=Inner(a:u8=0x2A, b:u8=0x2B), second:u8=0x1, third:u8=0x2)\n\n# creating a union instance\nmy_union = MyUnion()\n>>> MyUnion(as_struct=Outer(first=Inner(a:u8=0x0, b:u8=0x0), second:u8=0x0, third:u8=0x0), as_int:u32=0x0)\n\n# with defaults\nmy_union = MyUnion(as_struct=Outer(Inner(1,2), 3,4))\n>>> MyUnion(as_struct=Outer(first=Inner(a:u8=0x1, b:u8=0x2), second:u8=0x3, third:u8=0x4), as_int:u32=0x4030201)\n```\n\n### Setting field/member values\n\nValue setting is protected for fields:\n\n```python\nouter.second = 0x1234\n>>> ValueError: 4660 cannot be set for c_ubyte (error(\'ubyte format requires 0 <= number <= 255\'))!\n```\n\n### Parsing from binary data\n\n```python\nouter = Outer(first=Inner(a=1, b=2), second=3)\nprint(outer)\n>>> Outer(first=Inner(a:u8=0x1, b:u8=0x2), second:u8=0x3)\n\nouter.parse(b\'\\x11\\x22\\x33\')\nprint(outer)\n>>> Outer(first=Inner(a:u8=0x11, b:u8=0x22), second:u8=0x33)\n```\n\n### Packing of structures\n\nThe structures are by default packed to 4 bytes. This means, that empty fill bytes are added\nbetween struct members to align them to the 4 byte boundaries.\nThis packing can be modified by the user.\n\n```python\n@emb_struct\nclass Inner:\n    a: c_uint8\n    \n@emb_struct\nclass Outer:\n    first: Inner\n    second: c_uint32\n    \nouter = Outer(first=Inner(1), second = 0xFFEEDDCC)\nouter.stream()\n>>> b\'\\x01\\x00\\x00\\x00\\xcc\\xdd\\xee\\xff\'\n```\n\nIf we define the outer structure as below, the fill bytes will disappear\n\n```python\n@emb_struct(pack=1)\nclass Outer:\n    first: Inner\n    second: c_uint32\n    \nouter = Outer(first=Inner(1), second = 0xFFEEDDCC)\nouter.stream()\n>>> b\'\\x01\\xcc\\xdd\\xee\\xff\'\n```\n\nNote: this is true for the parse() method as well! \n\n### Endianness\n\nThe default endianness / byteorder is the one of the system\'s. (`sys.byteorder`).\nHowever, it can be adjusted in the decorators.\n\n```python\n@emb_struct(endian="little")\nclass Little:\n    a: c_uint16\n\nlittle = Little(a=0xFF00)\nlittle.stream()\n>>> b\'\\x00\\xff\'\n\n@emb_struct(endian="big")\nclass Big:\n    a: c_uint16\n\nbig = Big(a=0xFF00)\nbig.stream()\n>>> b\'\\xff\\x00\'\n```\n\nHowever, for now, unions only support native byteorder, as the ctypes module does not\nimplement the appropriate BigEndianUnion and LittleEndianUnion types.\nSee details:\n\nhttps://stackoverflow.com/questions/49524952/bigendianunion-is-not-part-of-pythons-ctypes\nhttps://bugs.python.org/issue33178\n\n### Bitfields\n\nBitfields can be defined with the following syntax:\n\n```python\n@emb_struct\nclass S:\n    a: (c_uint8, 2)\n    b: (c_uint8, 6)\n\ns = S()\nlen(s)\n>>> 1\n\nprint(s)\n>>> S(a:u8@2=0x0, b:u8@6=0x0)\n\ns.parse(b\'\\xAA\')\nprint(s)\n>>> S(a:u8@2=0x2, b:u8@6=0x2A)\n```\n\nThe parsing and streaming works for them just like for normal structures.\n\n#### Bitfield definition order\n\nNote, that just as in c, the definition order of the bitfields in one byte\ndepends on the byteorder of the containing structure.\n\nThis means, that for a little-endian structure, the bitfields inside a byte shall be\ndefined from top-down as LSB to MSB, however, for big-endian structures, the top-down\norder means MSB to LSB. See the example below, these two bitfield structures describe\nthe same thing, note the change in the order of the bitfields!\n\n```python\n@emb_struct(endian="little")\nclass BF_LE:\n    # byte 0\n    a: (c_uint8, 3)     # LSB\n    b: (c_uint8, 5)     # MSB\n    # byte 1\n    c: c_uint8\n    \n@emb_struct(endian="big")\nclass BF_BE:\n    # byte 0\n    b: (c_uint8, 5)  # MSB\n    a: (c_uint8, 3)  # LSB\n    # byte 1\n    c: c_uint8\n```\n\n### Generating c code\n\nThe ANSI c representation of a structure/union can be created from the class itself\nor from its instance. The `ccode()` static method returns a list of lines.\n\n```python\nprint(\'\\n\'.join(Outer.ccode()))\n# or\nprint(\'\\n\'.join(outer.ccode()))\n# or\nouter.print_ccode()\n```\n\n```c\ntypedef struct _tag_Inner {\n    unsigned char a;\n    unsigned char b;\n} Inner;\ntypedef struct _tag_Outer {\n    Inner first;\n    unsigned char second;\n} Outer;\n```\n\n#### Generating c code for bitfields\n\n```python\nBF_LE.print_ccode()\n```\n\n```c\ntypedef struct _tag_BF_LE {\n    unsigned char a : 3;\n    unsigned char b : 5;\n    unsigned char c;\n} BF_LE;\n```\n',
+    'author': 'csaba.nemes',
+    'author_email': 'waszil.waszil@gmail.com',
+    'maintainer': 'None',
+    'maintainer_email': 'None',
+    'url': 'https://github.com/shawwn/emb',
+    'packages': packages,
+    'package_data': package_data,
+    'install_requires': install_requires,
+    'python_requires': '>=3.6,<4.0',
+}
 
 
-here = os.path.abspath(os.path.dirname(__file__))
-
-
-setup(
-    name="pyembc",
-    version="0.0.1",
-    description="pyembc - declarative c datatypes",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    license="MIT",
-    url="https://github.com/waszil/pyembc",
-    use_scm_version={
-        "write_to": "_pyembc_version.py",
-        "write_to_template": 'version = "{version}"\n',
-    },
-    author="csaba.nemes",
-    author_email="waszil.waszil@gmail.com",
-    packages=find_packages(exclude=["test"]),
-    install_requires=["get-annotations>=0.1.2"],
-    extras_require=dict(
-        dev=[
-            "pytest",
-            "construct",
-        ]
-    ),
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires='>=3.7',
-)
+setup(**setup_kwargs)

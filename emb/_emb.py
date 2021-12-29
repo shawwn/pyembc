@@ -14,15 +14,15 @@ tempfolder = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, tempfolder)
 
 __all__ = [
-    "pyembc_struct",
-    "pyembc_union"
+    "emb_struct",
+    "emb_union"
 ]
 
 # save the system's endianness
 _SYS_ENDIANNESS_IS_LITTLE = sys.byteorder == "little"
-#  name for holding pyembc fields and endianness
-_FIELDS = "__pyembc_fields__"
-_ENDIAN = "__pyembc_endian__"
+#  name for holding emb fields and endianness
+_FIELDS = "__emb_fields__"
+_ENDIAN = "__emb_endian__"
 # name of the field in ctypes instances that hold the struct char
 _CTYPES_TYPE_ATTR = "_type_"
 # name of the field in ctypes Structure/Union instances that hold the fields
@@ -115,7 +115,7 @@ def c_repr(cdata):
     else:
         return repr(cdata)
 
-class PyembcFieldType:
+class EmbFieldType:
 
     """
     Class for holding information about the fields
@@ -178,15 +178,15 @@ class PyembcFieldType:
             return 0
 
 
-class _PyembcTarget(Enum):
+class _EmbTarget(Enum):
     """
-    Target type for pyembc class creation
+    Target type for emb class creation
     """
     STRUCT = auto()
     UNION = auto()
 
 
-def _check_value_for_type(field_type: PyembcFieldType, value: Any):
+def _check_value_for_type(field_type: EmbFieldType, value: Any):
     """
     Checks whether a value can be assigned to a field.
 
@@ -246,33 +246,33 @@ def _is_little_endian(obj: ctypes.Structure) -> bool:
         return is_swapped
 
 
-def _is_pyembc_type(instance: PyembcFieldType) -> bool:
+def _is_emb_type(instance: EmbFieldType) -> bool:
     """
-    Checks if an object/field is a pyembc instance by checking if it has the __pyembc_fields__ attribute
+    Checks if an object/field is a emb instance by checking if it has the __emb_fields__ attribute
 
     :param instance: instance to check
-    :return: True if pyembc instance
+    :return: True if emb instance
     """
     return hasattr(instance.base_type, _FIELDS)
 
 
 # noinspection PyProtectedMember
-def _short_type_name(typeobj: PyembcFieldType) -> str:
+def _short_type_name(typeobj: EmbFieldType) -> str:
     """
     Returns a short type name for a basic type, like u8, s16, etc...
 
-    :param typeobj: pyembc type object
+    :param typeobj: emb type object
     :return: short name for the type
     """
     return c_short_type_name(typeobj.base_type)
 
 
 # noinspection PyProtectedMember
-def _c_type_name(typeobj: PyembcFieldType) -> str:
+def _c_type_name(typeobj: EmbFieldType) -> str:
     """
     Returns an ANSI c type name for a basic type, like unsigned char, signed short, etc...
 
-    :param typeobj: pyembc type object
+    :param typeobj: emb type object
     :return: c type name for the type
     """
     # noinspection PyUnresolvedReferences
@@ -326,7 +326,7 @@ def __repr_for_union(self):
     s = f'{self.__class__.__name__}('
     for i, (field_name, field_type) in enumerate(_fields.items()):
         _field = getattr(self, field_name)
-        if _is_pyembc_type(field_type):
+        if _is_emb_type(field_type):
             s += f"{field_name}={repr(_field)}"
         else:
             if field_type.is_bitfield:
@@ -381,7 +381,7 @@ def _add_method(
         "cls": cls,
         "ctypes": ctypes,
         "struct": struct,
-        "_is_pyembc_type": _is_pyembc_type,
+        "_is_emb_type": _is_emb_type,
         "_short_type_name": _short_type_name,
         "_c_type_name": _c_type_name,
         "_is_little_endian": _is_little_endian,
@@ -401,7 +401,7 @@ def _add_method(
     # with tempfile.TemporaryDirectory() as tmpdirname:
     if True:
         safesig = ''.join([(c if c.isalnum() else '_') for c in sig])
-        filename = os.path.join(tempfolder, f'pyembc_dynamic_{safesig}.py')
+        filename = os.path.join(tempfolder, f'emb_dynamic_{safesig}.py')
         with open(filename, 'w') as f:
             f.write(code)
         expr = compile(code, filename, 'exec')
@@ -418,7 +418,7 @@ def _add_method(
     setattr(cls, name, method)
 
 
-def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctypes.sizeof(ctypes.c_size_t)):
+def _generate_class(_cls, target: _EmbTarget, endian=sys.byteorder, pack=ctypes.sizeof(ctypes.c_size_t)):
     """
     Generates a new class based on the decorated one that we gen in the _cls parameter.
     Adds methods, sets bases, etc.
@@ -438,13 +438,13 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
     # https://bugs.python.org/issue33178
     if endian == "little":
         _bases = {
-            _PyembcTarget.STRUCT: ctypes.LittleEndianStructure,
-            _PyembcTarget.UNION: ctypes.Union
+            _EmbTarget.STRUCT: ctypes.LittleEndianStructure,
+            _EmbTarget.UNION: ctypes.Union
         }
     elif endian == "big":
         _bases = {
-            _PyembcTarget.STRUCT: ctypes.BigEndianStructure,
-            _PyembcTarget.UNION: ctypes.Union
+            _EmbTarget.STRUCT: ctypes.BigEndianStructure,
+            _EmbTarget.UNION: ctypes.Union
         }
     else:
         raise ValueError("Invalid endianness")
@@ -492,13 +492,13 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
         if field_cnt == len(cls_annotations) - 1:
             if _bitfield_counter > 0:
                 raise SyntaxError("Incomplete bitfield definition!")
-        field_type = PyembcFieldType(ctype=cls, _cls=_cls, _type=__field_type, bit_size=bit_size, bit_offset=bit_offset)
+        field_type = EmbFieldType(ctype=cls, _cls=_cls, _type=__field_type, bit_size=bit_size, bit_offset=bit_offset)
         # noinspection PyProtectedMember
         if not field_type.is_ctypes_type:
             raise TypeError(
                 f'Invalid type for field "{field_name}". Only ctypes types can be used!'
             )
-        if target is _PyembcTarget.UNION:
+        if target is _EmbTarget.UNION:
             # for unions, check if all sub-struct has the same endianness.
             if field_type.is_structure:
                 if _first_endian is None:
@@ -580,7 +580,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
     docstring = "gets the bytestream of the instance"
     if issubclass(cls, ctypes.Union):
         body = f"""
-            if cls.__pyembc_endian__ == sys.byteorder:
+            if cls.__emb_endian__ == sys.byteorder:
                 return bytes(self)
             else:
                 _bytearray = bytearray(self)
@@ -630,7 +630,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
         print(' ')
         for field_name, field_type in cls.{_FIELDS}.items():
             _field = getattr(cls, field_name)
-            if _is_pyembc_type(field_type):
+            if _is_emb_type(field_type):
                 subcode = field_type.base_type.ccode()
                 code = subcode + code
                 code.append(f"    {{field_type.base_type.__name__}} {{field_name}};")
@@ -678,7 +678,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
         s = f'{{cls.__name__}}('
         for i, (field_name, field_type) in enumerate(self.{_FIELDS}.items()):
             _field = getattr(self, field_name)
-            if _is_pyembc_type(field_type):
+            if _is_emb_type(field_type):
                 s += f'{{field_name}}={{repr(_field)}}'
             else:                
                 if field_type.is_bitfield:
@@ -707,7 +707,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
     body = f"""
         field = self.__getattribute__(field_name)
         field_type = self.{_FIELDS}[field_name]
-        if _is_pyembc_type(field_type):
+        if _is_emb_type(field_type):
             if not isinstance(field_type.base_type, type):
                 import pdb, sys; mypdb = pdb.Pdb(stdout=sys.__stderr__); mypdb.set_trace()
             if not isinstance(value, field_type.base_type):
@@ -741,7 +741,7 @@ def _generate_class(_cls, target: _PyembcTarget, endian=sys.byteorder, pack=ctyp
     return cls
 
 
-def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = ctypes.sizeof(ctypes.c_size_t)):
+def emb_struct(_cls=None, *, endian=sys.byteorder, pack: int = ctypes.sizeof(ctypes.c_size_t)):
     """
     Magic decorator to create a user-friendly struct class
 
@@ -751,16 +751,16 @@ def pyembc_struct(_cls=None, *, endian=sys.byteorder, pack: int = ctypes.sizeof(
     :return:
     """
     def wrap(cls):
-        return _generate_class(cls, _PyembcTarget.STRUCT, endian, pack)
+        return _generate_class(cls, _EmbTarget.STRUCT, endian, pack)
     if _cls is None:
-        # call with parens: @pyembc_struct(...)
+        # call with parens: @emb_struct(...)
         return wrap
     else:
-        # call without parens: @pyembc_struct
+        # call without parens: @emb_struct
         return wrap(_cls)
 
 
-def pyembc_union(_cls=None, *, endian=sys.byteorder, pack=ctypes.sizeof(ctypes.c_size_t)):
+def emb_union(_cls=None, *, endian=sys.byteorder, pack=ctypes.sizeof(ctypes.c_size_t)):
     """
     Magic decorator to create a user-friendly union class
 
@@ -778,11 +778,11 @@ def pyembc_union(_cls=None, *, endian=sys.byteorder, pack=ctypes.sizeof(ctypes.c
         )
 
     def wrap(cls):
-        return _generate_class(cls, _PyembcTarget.UNION, endian, pack=pack)
+        return _generate_class(cls, _EmbTarget.UNION, endian, pack=pack)
 
     if _cls is None:
-        # call with parens: @pyembc_struct(...)
+        # call with parens: @emb_struct(...)
         return wrap
     else:
-        # call without parens: @pyembc_struct
+        # call without parens: @emb_struct
         return wrap(_cls)

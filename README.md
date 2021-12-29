@@ -1,10 +1,10 @@
-# pyembc
+# emb
 
 Declarative library for for describing embedded C data types in python
 
 ## Motivation
 
-`pyembc` is a wrapper above the `ctypes` library providing a more simple and declarative syntax,
+`emb` is a wrapper above the `ctypes` library providing a more simple and declarative syntax,
 what I find more easy to use.
 
 The motivation behind creating this library is to be able to write down a c structure/union very
@@ -26,21 +26,21 @@ I use `exec` under the hood as well! Yes, I know.
 structures and unions can be declared in a similar way as with `dataclasses`:
 
 ```python
-from pyembc import pyembc_struct, pyembc_union
+from emb import emb_struct, emb_union
 from ctypes import *
 
-@pyembc_struct
+@emb_struct
 class Inner:
     a: c_uint8
     b: c_uint8
 
-@pyembc_struct
+@emb_struct
 class Outer:
     first: Inner
     second: c_uint8
     third: c_uint8
     
-@pyembc_union
+@emb_union
 class MyUnion:
     as_struct: Outer
     as_int: c_uint32
@@ -109,11 +109,11 @@ between struct members to align them to the 4 byte boundaries.
 This packing can be modified by the user.
 
 ```python
-@pyembc_struct
+@emb_struct
 class Inner:
     a: c_uint8
     
-@pyembc_struct
+@emb_struct
 class Outer:
     first: Inner
     second: c_uint32
@@ -126,7 +126,7 @@ outer.stream()
 If we define the outer structure as below, the fill bytes will disappear
 
 ```python
-@pyembc_struct(pack=1)
+@emb_struct(pack=1)
 class Outer:
     first: Inner
     second: c_uint32
@@ -144,7 +144,7 @@ The default endianness / byteorder is the one of the system's. (`sys.byteorder`)
 However, it can be adjusted in the decorators.
 
 ```python
-@pyembc_struct(endian="little")
+@emb_struct(endian="little")
 class Little:
     a: c_uint16
 
@@ -152,7 +152,7 @@ little = Little(a=0xFF00)
 little.stream()
 >>> b'\x00\xff'
 
-@pyembc_struct(endian="big")
+@emb_struct(endian="big")
 class Big:
     a: c_uint16
 
@@ -173,7 +173,7 @@ https://bugs.python.org/issue33178
 Bitfields can be defined with the following syntax:
 
 ```python
-@pyembc_struct
+@emb_struct
 class S:
     a: (c_uint8, 2)
     b: (c_uint8, 6)
@@ -203,7 +203,7 @@ order means MSB to LSB. See the example below, these two bitfield structures des
 the same thing, note the change in the order of the bitfields!
 
 ```python
-@pyembc_struct(endian="little")
+@emb_struct(endian="little")
 class BF_LE:
     # byte 0
     a: (c_uint8, 3)     # LSB
@@ -211,7 +211,7 @@ class BF_LE:
     # byte 1
     c: c_uint8
     
-@pyembc_struct(endian="big")
+@emb_struct(endian="big")
 class BF_BE:
     # byte 0
     b: (c_uint8, 5)  # MSB

@@ -4,7 +4,7 @@ from ctypes import c_ubyte, c_uint16, c_uint8, c_uint32, c_float, c_int8
 import construct
 import pytest
 
-from pyembc import pyembc_struct, pyembc_union
+from emb import emb_struct, emb_union
 
 
 def test_compare_construct_benchmark():
@@ -16,12 +16,12 @@ def test_compare_construct_benchmark():
         "enable" / construct.Int8ub
     )
 
-    @pyembc_struct
+    @emb_struct
     class SendMode:
         a: c_ubyte
         b: c_ubyte
 
-    @pyembc_struct
+    @emb_struct
     class NA2:
         send_mode: SendMode
         enable: c_ubyte
@@ -46,27 +46,27 @@ def test_compare_construct_benchmark():
         newdata = na2.stream()
         # del na2
     t1 = time.perf_counter()
-    print('pyembc:   ', t1 - t0)
+    print('emb:   ', t1 - t0)
     b = t1 - t0
 
     print('Diff factor:', max(a, b) / min(a, b))
 
 
-@pyembc_struct(endian="little")
+@emb_struct(endian="little")
 class SL:
     a: c_uint16
     b: c_uint8
     c: c_uint8
 
 
-@pyembc_struct(endian="big")
+@emb_struct(endian="big")
 class SB:
     a: c_uint16
     b: c_uint8
     c: c_uint8
 
 
-@pyembc_union
+@emb_union
 class U:
     sl: SL
     raw: c_uint32
@@ -133,12 +133,12 @@ def test_parse_union():
 
 
 def parse_embedded():
-    @pyembc_struct
+    @emb_struct
     class Inner:
         a: c_uint8
         b: c_uint8
 
-    @pyembc_struct
+    @emb_struct
     class Outer:
         first: Inner
         second: c_uint8
@@ -157,7 +157,7 @@ def parse_embedded():
 
 
 def test_ccode():
-    @pyembc_struct
+    @emb_struct
     class S:
         a: c_uint16
         b: c_float
@@ -171,7 +171,7 @@ def test_ccode():
 
 
 def test_bitfields():
-    @pyembc_struct
+    @emb_struct
     class S:
         a: (c_uint8, 2)
         b: (c_uint8, 6)
@@ -188,25 +188,25 @@ def test_bitfields():
     assert s.b == 32
 
     with pytest.raises(SyntaxError):
-        @pyembc_struct
+        @emb_struct
         class S:
             a: (c_uint8, 1)
 
     with pytest.raises(SyntaxError):
-        @pyembc_struct
+        @emb_struct
         class S:
             a: (c_uint8, 1)
             b: (c_uint8, 8)
 
     with pytest.raises(SyntaxError):
-        @pyembc_struct
+        @emb_struct
         class S:
             a: (c_uint8, 1)
             b: (c_int8, 7)
 
 
 def test_bitfields_endian():
-    @pyembc_struct(endian="little")
+    @emb_struct(endian="little")
     class BF_LE:
         # byte 0
         a: (c_uint8, 3)     # LSB
@@ -221,7 +221,7 @@ def test_bitfields_endian():
     assert bf_le.b == 0b10101
     assert bf_le.c == 0x42
 
-    @pyembc_struct(endian="big")
+    @emb_struct(endian="big")
     class BF_BE:
         # byte 0
         b: (c_uint8, 5)  # MSB
