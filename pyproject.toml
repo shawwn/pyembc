@@ -18,7 +18,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.semantic_release]
 version_variable = "pyproject.toml:version"
-branch = "main"
+branch = "master"
 include_additional_files = "setup.py"
 major_on_zero = false
 build_command = "poetry build"              # build dists
