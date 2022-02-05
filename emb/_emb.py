@@ -705,6 +705,8 @@ def _generate_class(_cls, target: _EmbTarget, endian=sys.byteorder, pack=ctypes.
     # ---------------------------------------------------
     docstring = "Attribute setter. Checks values."
     body = f"""
+        if field_name not in self.{_FIELDS}:
+            return super(cls, self).__setattr__(field_name, value)
         field = self.__getattribute__(field_name)
         field_type = self.{_FIELDS}[field_name]
         if _is_emb_type(field_type):
