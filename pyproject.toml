@@ -15,3 +15,11 @@ get-annotations = "^0.1.2"
 [build-system]
 requires = ["setuptools", "poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.semantic_release]
+version_variable = "pyproject.toml:version"
+branch = "main"
+include_additional_files = "setup.py"
+major_on_zero = false
+build_command = "poetry build"              # build dists
+dist_path = "dist/"                         # where to put dists
