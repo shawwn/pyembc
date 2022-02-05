@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "emb"
-version = "0.0.1"
+version = "0.0.2"
 homepage = "https://github.com/shawwn/emb"
 description = "Declarative library for for describing embedded C data types in python"
 authors = ["csaba.nemes <waszil.waszil@gmail.com>", "Shawn Presser <shawnpresser@gmail.com>"]
